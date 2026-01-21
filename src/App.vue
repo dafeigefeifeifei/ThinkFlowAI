@@ -22,7 +22,7 @@ import {
     Grid3X3,
     Trash2
 } from 'lucide-vue-next'
-import { VueFlow, useVueFlow, Position, MarkerType } from '@vue-flow/core'
+import { VueFlow, useVueFlow, Position, MarkerType, Handle } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { toPng } from 'html-to-image'
@@ -251,7 +251,14 @@ const processSubNodes = (subNodes: any[], parentId: string, baseX: number, baseY
             id: childId,
             type: 'window',
             position: { x: baseX + offsetX, y: baseY + offsetY },
-            data: { label: item.text, description: item.description, type: 'child' },
+            data: {
+                label: item.text,
+                description: item.description,
+                type: 'child',
+                followUp: '',
+                isExpanding: false,
+                isImageLoading: false
+            },
             sourcePosition: Position.Right,
             targetPosition: Position.Left
         })
@@ -346,20 +353,24 @@ const startNewSession = () => {
                             'opacity-100 grayscale-0 blur-0 scale-105 z-50': activeNodeId === id
                         }"
                         :style="{
-                            borderColor: data.isExpanding || activeNodeId === id ? config.edgeColor : '',
+                            borderColor: activeNodeId === id ? config.edgeColor : config.edgeColor + '40',
                             boxShadow: activeNodeId === id ? `0 20px 50px -12px ${config.edgeColor}40` : ''
                         }"
                         @mouseenter="hoveredNodeId = id"
                         @mouseleave="hoveredNodeId = null"
                     >
+                        <!-- 增加连接锚点 -->
+                        <Handle type="target" :position="Position.Left" class="!bg-transparent !border-none" />
+                        <Handle type="source" :position="Position.Right" class="!bg-transparent !border-none" />
+
                         <!-- Window Header -->
-                        <div class="window-header" :style="{ backgroundColor: data.isExpanding || activeNodeId === id ? config.edgeColor + '10' : '' }">
+                        <div class="window-header" :style="{ backgroundColor: activeNodeId === id ? config.edgeColor + '15' : config.edgeColor + '05' }">
                             <div class="flex gap-1.5">
-                                <div class="w-2 h-2 rounded-full" :style="{ backgroundColor: data.isExpanding || activeNodeId === id ? config.edgeColor : '#f87171' }"></div>
-                                <div class="w-2 h-2 rounded-full bg-amber-400/80"></div>
-                                <div class="w-2 h-2 rounded-full bg-emerald-400/80"></div>
+                                <div class="w-2 h-2 rounded-full" :style="{ backgroundColor: config.edgeColor }"></div>
+                                <div class="w-2 h-2 rounded-full bg-slate-200"></div>
+                                <div class="w-2 h-2 rounded-full bg-slate-200"></div>
                             </div>
-                            <span class="window-title" :style="{ color: data.isExpanding || activeNodeId === id ? config.edgeColor : '' }">
+                            <span class="window-title" :style="{ color: config.edgeColor }">
                                 {{ data.type === 'root' ? 'main.ts' : 'module.tsx' }}
                             </span>
                         </div>
@@ -568,10 +579,6 @@ body {
 /* VueFlow Overrides */
 .vue-flow__node-window {
     @apply p-0 border-none bg-transparent !important;
-}
-
-.vue-flow__edge-path {
-    @apply stroke-orange-200 !important;
 }
 
 .vue-flow__controls {
