@@ -119,6 +119,7 @@ const hoveredNodeId = ref<string | null>(null)
 const focusedNodeId = ref<string | null>(null)
 const draggingNodeId = ref<string | null>(null)
 const previewImageUrl = ref<string | null>(null)
+const showResetConfirm = ref(false)
 
 // 画布控制状态
 const panOnDrag = ref(true)
@@ -249,6 +250,19 @@ watch(
 )
 
 /**
+ * 统一错误处理
+ */
+const getErrorMessage = (error: any) => {
+    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        return t('common.error.cors')
+    }
+    if (error.status === 429) return t('common.error.rateLimit')
+    if (error.status === 400) return t('common.error.badRequest')
+    if (error.status >= 500) return t('common.error.serverError')
+    return error.message || t('common.error.unknown')
+}
+
+/**
  * 聚焦到根节点
  */
 const centerRoot = () => {
@@ -327,7 +341,10 @@ const generateNodeImage = async (nodeId: string, prompt: string) => {
     const node = flowNodes.value.find(n => n.id === nodeId)
     if (!node || node.data.isImageLoading) return
 
-    updateNode(nodeId, { data: { ...node.data, isImageLoading: true } })
+    // 激活节点
+    updateNode(nodeId, { selected: true, zIndex: 1000 })
+    
+    updateNode(nodeId, { data: { ...node.data, isImageLoading: true, error: null } })
 
     const useConfig = apiConfig.mode === 'default' ? DEFAULT_CONFIG.image : apiConfig.image
     // 自定义模式下完全使用用户输入，不进行项目 Key 兜底
@@ -346,14 +363,70 @@ const generateNodeImage = async (nodeId: string, prompt: string) => {
             })
         })
 
-        if (!response.ok) throw new Error('Image request failed')
+        if (!response.ok) {
+            const error: any = new Error('Image request failed')
+            error.status = response.status
+            throw error
+        }
         const data = await response.json()
         const imageUrl = data.data[0].url
 
-        updateNode(nodeId, { data: { ...node.data, imageUrl, isImageLoading: false } })
-    } catch (error) {
+        updateNode(nodeId, { data: { ...node.data, imageUrl, isImageLoading: false, error: null } })
+    } catch (error: any) {
         console.error('Image Generation Error:', error)
-        updateNode(nodeId, { data: { ...node.data, isImageLoading: false } })
+        updateNode(nodeId, { data: { ...node.data, isImageLoading: false, error: getErrorMessage(error) } })
+    }
+}
+
+/**
+ * 深度解析节点内容
+ */
+const deepDive = async (nodeId: string, topic: string) => {
+    const node = flowNodes.value.find(n => n.id === nodeId)
+    if (!node) return
+
+    // 激活节点并置顶
+    updateNode(nodeId, { selected: true, zIndex: 1000 })
+
+    // 如果已经有内容且当前是收起状态，则直接展开
+    if (node.data.detailedContent && !node.data.isDetailExpanded) {
+        updateNode(nodeId, { data: { ...node.data, isDetailExpanded: true } })
+        return
+    }
+
+    // 如果已经在加载，则不重复请求
+    if (node.data.isDeepDiving) return
+
+    updateNode(nodeId, { data: { ...node.data, isDeepDiving: true, isDetailExpanded: true, error: null } })
+
+    const useConfig = apiConfig.mode === 'default' ? DEFAULT_CONFIG.chat : apiConfig.chat
+    const finalApiKey = apiConfig.mode === 'default' ? useConfig.apiKey || API_KEY : useConfig.apiKey
+
+    try {
+        const response = await fetch(useConfig.baseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${finalApiKey}`
+            },
+            body: JSON.stringify({
+                model: useConfig.model,
+                messages: [{ role: 'user', content: t('prompts.deepDivePrompt', { topic }) }]
+            })
+        })
+
+        if (!response.ok) {
+            const error: any = new Error('Deep dive request failed')
+            error.status = response.status
+            throw error
+        }
+        const data = await response.json()
+        const content = data.choices[0].message.content
+
+        updateNode(nodeId, { data: { ...node.data, detailedContent: content, isDeepDiving: false, error: null } })
+    } catch (error: any) {
+        console.error('Deep Dive Error:', error)
+        updateNode(nodeId, { data: { ...node.data, isDeepDiving: false, error: getErrorMessage(error) } })
     }
 }
 
@@ -408,7 +481,9 @@ const expandIdea = async (param?: any, customInput?: string) => {
                 description: t('node.coreIdea'),
                 type: 'root',
                 isExpanding: true,
-                followUp: ''
+                isTitleExpanded: false,
+                followUp: '',
+                error: null
             },
             sourcePosition: Position.Right,
             targetPosition: Position.Left
@@ -417,7 +492,16 @@ const expandIdea = async (param?: any, customInput?: string) => {
         ideaInput.value = ''
     } else {
         const node = flowNodes.value.find(n => n.id === parentNode.id)
-        if (node) node.data.isExpanding = true
+        if (node) {
+            updateNode(parentNode.id, {
+                    data: {
+                        ...node.data,
+                        isExpanding: true,
+                        isDetailExpanded: false, // 开始发散时隐藏详情
+                        error: null
+                    }
+                })
+        }
     }
 
     const systemPrompt = t('prompts.system')
@@ -452,7 +536,11 @@ const expandIdea = async (param?: any, customInput?: string) => {
             })
         })
 
-        if (!response.ok) throw new Error('AI request failed')
+        if (!response.ok) {
+            const error: any = new Error('AI request failed')
+            error.status = response.status
+            throw error
+        }
         const data = await response.json()
         const result = JSON.parse(data.choices[0].message.content)
 
@@ -462,8 +550,29 @@ const expandIdea = async (param?: any, customInput?: string) => {
         const startY = parentNodeObj ? parentNodeObj.position.y : 300
 
         processSubNodes(result.nodes, currentParentId, startX, startY)
-    } catch (error) {
+
+        // 首次输入后，优化缩放比例：展示根节点和大约3个二级节点
+        if (!parentNode) {
+            setTimeout(() => {
+                const childEdges = flowEdges.value.filter(e => e.source === currentParentId)
+                const childIds = childEdges.map(e => e.target)
+                
+                // 选取前3个二级节点作为缩放参考，这样可以保证缩放比例适中（约看到3个二级的大小）
+                const nodesToFit = [currentParentId, ...childIds.slice(0, 3)]
+                
+                fitView({
+                    nodes: nodesToFit,
+                    padding: 0.25,
+                    duration: 1000
+                })
+            }, 100)
+        }
+    } catch (error: any) {
         console.error('Expansion Error:', error)
+        const node = flowNodes.value.find(n => n.id === currentParentId)
+        if (node) {
+            updateNode(currentParentId, { data: { ...node.data, error: getErrorMessage(error) } })
+        }
     } finally {
         const node = flowNodes.value.find(n => n.id === currentParentId)
         if (node) {
@@ -489,7 +598,9 @@ const processSubNodes = (subNodes: any[], parentId: string, baseX: number, baseY
                 type: 'child',
                 followUp: '',
                 isExpanding: false,
-                isImageLoading: false
+                isImageLoading: false,
+                isTitleExpanded: false,
+                error: null
             },
             sourcePosition: Position.Right,
             targetPosition: Position.Left
@@ -506,10 +617,19 @@ const processSubNodes = (subNodes: any[], parentId: string, baseX: number, baseY
     })
 }
 
-const startNewSession = () => {
+const executeReset = () => {
     ideaInput.value = ''
     setNodes([])
     setEdges([])
+    showResetConfirm.value = false
+}
+
+const startNewSession = () => {
+    if (flowNodes.value.length > 0) {
+        showResetConfirm.value = true
+        return
+    }
+    executeReset()
 }
 </script>
 
@@ -527,12 +647,6 @@ const startNewSession = () => {
 
                 <!-- 桌面端工具按钮组 -->
                 <div class="hidden md:flex items-center gap-2">
-                    <!-- 重置画布 -->
-                    <button @click="startNewSession" class="toolbar-btn text-red-500 hover:bg-red-50 border-red-100 flex-shrink-0" :title="t('nav.reset')">
-                        <Trash2 class="w-3.5 h-3.5 md:w-4 h-4" />
-                        <span>{{ t('nav.reset') }}</span>
-                    </button>
-
                     <div class="h-4 w-[1px] bg-slate-100 mx-1 flex-shrink-0"></div>
 
                     <!-- 布局控制 -->
@@ -549,6 +663,14 @@ const startNewSession = () => {
                     <button @click="centerRoot" class="toolbar-btn text-orange-500 hover:bg-orange-50 border-orange-100 flex-shrink-0" :title="t('nav.center')">
                         <Target class="w-3.5 h-3.5 md:w-4 h-4" />
                         <span>{{ t('nav.center') }}</span>
+                    </button>
+
+                    <div class="h-4 w-[1px] bg-slate-100 mx-1 flex-shrink-0"></div>
+
+                    <!-- 重置画布 -->
+                    <button @click="startNewSession" class="toolbar-btn text-red-500 hover:bg-red-50 border-red-100 flex-shrink-0" :title="t('nav.reset')">
+                        <Trash2 class="w-3.5 h-3.5 md:w-4 h-4" />
+                        <span>{{ t('nav.reset') }}</span>
                     </button>
 
                     <div class="h-4 w-[1px] bg-slate-100 mx-1 flex-shrink-0"></div>
@@ -636,12 +758,6 @@ const startNewSession = () => {
             leave-to-class="transform -translate-y-4 opacity-0"
         >
             <div v-if="isToolsExpanded" class="md:hidden absolute top-[57px] left-0 right-0 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xl z-40 py-4 px-4 flex flex-wrap gap-3 justify-center">
-                <!-- 重置画布 -->
-                <button @click="startNewSession(); isToolsExpanded = false" class="toolbar-btn text-red-500 hover:bg-red-50 border-red-100" :title="t('nav.reset')">
-                    <Trash2 class="w-4 h-4" />
-                    <span>{{ t('nav.reset') }}</span>
-                </button>
-
                 <!-- 布局控制 -->
                 <button @click="fitView({ padding: 0.2, duration: 800 }); isToolsExpanded = false" class="toolbar-btn text-blue-500 hover:bg-blue-50 border-blue-100" :title="t('nav.fit')">
                     <Focus class="w-4 h-4" />
@@ -656,6 +772,12 @@ const startNewSession = () => {
                 <button @click="centerRoot(); isToolsExpanded = false" class="toolbar-btn text-orange-500 hover:bg-orange-50 border-orange-100" :title="t('nav.center')">
                     <Target class="w-4 h-4" />
                     <span>{{ t('nav.center') }}</span>
+                </button>
+
+                <!-- 重置画布 -->
+                <button @click="startNewSession(); isToolsExpanded = false" class="toolbar-btn text-red-500 hover:bg-red-50 border-red-100" :title="t('nav.reset')">
+                    <Trash2 class="w-4 h-4" />
+                    <span>{{ t('nav.reset') }}</span>
                 </button>
 
                 <!-- 连线颜色 -->
@@ -706,7 +828,12 @@ const startNewSession = () => {
                 :pan-on-drag="panOnDrag"
                 :selection-key-code="'Shift'"
             >
-                <Background :variant="config.backgroundVariant" pattern-color="#f2f2f2" :gap="24" :size="0.5" />
+                <Background 
+                    :variant="config.backgroundVariant" 
+                    :pattern-color="config.backgroundVariant === BackgroundVariant.Dots ? '#cbd5e1' : '#f1f5f9'" 
+                    :gap="24" 
+                    :size="config.backgroundVariant === BackgroundVariant.Dots ? 1 : 0.5" 
+                />
                 <Controls v-if="config.showControls" />
                 <MiniMap v-if="config.showMiniMap" pannable zoomable />
 
@@ -716,7 +843,8 @@ const startNewSession = () => {
                         class="window-node group transition-all duration-500"
                         :class="{
                             'opacity-40 grayscale-[0.4] blur-[0.5px] scale-[0.98] pointer-events-none': activeNodeId && !activePath.nodeIds.has(id),
-                            'opacity-100 grayscale-0 blur-0 scale-105 z-50 ring-2 ring-offset-4': activePath.nodeIds.has(id)
+                            'opacity-100 grayscale-0 blur-0 scale-105 z-50 ring-2 ring-offset-4': activePath.nodeIds.has(id),
+                            '!w-[450px]': data.isDetailExpanded
                         }"
                         :style="{
                             borderColor: activePath.nodeIds.has(id) ? config.edgeColor : config.edgeColor + '40',
@@ -784,13 +912,37 @@ const startNewSession = () => {
                                 </div>
                             </div>
 
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="font-bold" :style="{ color: config.edgeColor }">></span>
-                                <h3 class="font-black text-slate-900 tracking-tight truncate">{{ data.label }}</h3>
+                            <div class="flex items-start gap-2 mb-2">
+                                <span class="font-bold shrink-0 mt-0.5" :style="{ color: config.edgeColor }">></span>
+                                <h3
+                                    class="font-black text-slate-900 tracking-tight cursor-pointer hover:text-orange-600 transition-colors"
+                                    :class="data.isTitleExpanded ? 'whitespace-normal' : 'truncate'"
+                                    @click.stop="updateNode(id, { data: { ...data, isTitleExpanded: !data.isTitleExpanded } })"
+                                >
+                                    {{ data.label }}
+                                </h3>
                             </div>
                             <p class="text-[10px] text-slate-500 leading-relaxed font-medium line-clamp-3">
                                 {{ data.description }}
                             </p>
+
+                            <!-- 错误反馈显示 -->
+                            <div v-if="data.error" class="mt-3 p-2.5 bg-red-50 border border-red-100 rounded-lg animate-in fade-in slide-in-from-top-1 duration-300">
+                                <div class="flex items-start gap-2">
+                                    <Shield class="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                                    <div class="flex-grow space-y-1">
+                                        <p class="text-[10px] font-black text-red-600 leading-tight">{{ t('common.error.title') }}</p>
+                                        <p class="text-[9px] text-red-500 leading-relaxed">{{ data.error }}</p>
+                                    </div>
+                                    <button 
+                                        @click.stop="data.imageUrl === null && data.isImageLoading === false ? generateNodeImage(id, data.label) : expandIdea({ id, data, position: flowNodes.find(n => n.id === id)?.position })"
+                                        class="p-1 hover:bg-red-100 rounded transition-colors"
+                                        :title="t('common.error.retry')"
+                                    >
+                                        <RefreshCw class="w-3 h-3 text-red-600" />
+                                    </button>
+                                </div>
+                            </div>
 
                             <!-- Node Actions -->
                             <div class="pt-3 mt-3 border-t border-slate-50">
@@ -804,6 +956,14 @@ const startNewSession = () => {
 
                                     <div class="flex items-center gap-2">
                                         <button
+                                            @click.stop="deepDive(id, data.label)"
+                                            class="action-btn text-orange-500 hover:bg-orange-50"
+                                            :title="t('node.deepDive')"
+                                        >
+                                            <BookOpen class="w-2.5 h-2.5" />
+                                            <span>{{ t('node.deepDive') }}</span>
+                                        </button>
+                                        <button
                                             v-if="!data.imageUrl && !data.isImageLoading"
                                             @click.stop="generateNodeImage(id, data.label)"
                                             class="action-btn text-blue-500 hover:bg-blue-50"
@@ -812,6 +972,26 @@ const startNewSession = () => {
                                             <span>{{ t('node.imgAction') }}</span>
                                         </button>
                                     </div>
+                                </div>
+
+                                <!-- Detailed Content Display -->
+                                <div v-if="data.isDetailExpanded" class="mb-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">{{ t('node.deepDive') }}</span>
+                                        <button @click.stop="updateNode(id, { data: { ...data, isDetailExpanded: false } })" class="text-slate-300 hover:text-slate-500">
+                                            <X class="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <div v-if="data.isDeepDiving" class="flex flex-col items-center py-6">
+                                        <div class="relative mb-3">
+                                            <RefreshCw class="w-6 h-6 text-orange-400 animate-spin" />
+                                            <div class="absolute inset-0 blur-lg bg-orange-200 opacity-50 animate-pulse"></div>
+                                        </div>
+                                        <span class="text-[9px] font-black text-slate-300 uppercase tracking-widest animate-pulse">{{ t('common.loading') }}</span>
+                                    </div>
+                                    <div v-else class="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap max-h-[350px] overflow-y-auto custom-scrollbar pr-2 selection:bg-orange-100 nowheel">
+                                         {{ data.detailedContent }}
+                                     </div>
                                 </div>
 
                                 <!-- Follow-up Input -->
@@ -1000,14 +1180,55 @@ const startNewSession = () => {
             </div>
 
             <!-- 全局图片预览弹窗 -->
-            <div v-if="previewImageUrl" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-10" @click="previewImageUrl = null">
-                <div class="relative max-w-full max-h-full rounded-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300" @click.stop>
-                    <button @click="previewImageUrl = null" class="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors z-10">
-                        <X class="w-5 h-5" />
-                    </button>
-                    <img :src="previewImageUrl" class="max-w-screen max-h-screen object-contain" />
+            <Transition name="fade">
+                <div v-if="previewImageUrl" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-10" @click="previewImageUrl = null">
+                    <div class="relative max-w-full max-h-full rounded-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300" @click.stop>
+                        <button @click="previewImageUrl = null" class="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors z-10">
+                            <X class="w-5 h-5" />
+                        </button>
+                        <img :src="previewImageUrl" class="max-w-screen max-h-screen object-contain" />
+                    </div>
                 </div>
-            </div>
+            </Transition>
+
+            <!-- 自定义重置确认弹窗 -->
+            <Transition name="fade">
+                <div v-if="showResetConfirm" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" @click="showResetConfirm = false"></div>
+                    <div class="relative bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm overflow-hidden group animate-in zoom-in duration-300">
+                        <!-- 背景装饰 -->
+                        <div class="absolute -top-12 -right-12 w-24 h-24 bg-orange-50 rounded-full blur-2xl group-hover:bg-orange-100 transition-colors"></div>
+                        
+                        <div class="relative flex flex-col items-center text-center space-y-4">
+                            <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 mb-2 ring-4 ring-orange-50/50">
+                                <RefreshCw class="w-8 h-8 animate-spin-slow" />
+                            </div>
+                            
+                            <div class="space-y-2">
+                                <h3 class="text-lg font-bold text-slate-800 tracking-tight">{{ t('nav.reset') }}</h3>
+                                <p class="text-sm text-slate-500 leading-relaxed px-4">
+                                    {{ t('common.confirmReset') }}
+                                </p>
+                            </div>
+
+                            <div class="flex items-center gap-3 w-full pt-2">
+                                <button 
+                                    @click="showResetConfirm = false"
+                                    class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors active:scale-95"
+                                >
+                                    {{ t('common.cancel') || 'Cancel' }}
+                                </button>
+                                <button 
+                                    @click="executeReset"
+                                    class="flex-1 px-4 py-2.5 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 shadow-lg shadow-orange-500/30 transition-all active:scale-95"
+                                >
+                                    {{ t('common.confirm') || 'Confirm' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
         </div>
 
         <!-- 底部全局操作栏 -->
@@ -1097,9 +1318,25 @@ body {
     @apply border-current bg-opacity-10;
 }
 
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
+
 /* VueFlow Overrides */
 .vue-flow__node-window {
     @apply p-0 border-none bg-transparent !important;
+}
+
+.vue-flow__node.selected {
+    z-index: 1000 !important;
 }
 
 .vue-flow__controls {

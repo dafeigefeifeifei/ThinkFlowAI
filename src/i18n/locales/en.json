@@ -3,14 +3,25 @@
     "settings": "API Settings",
     "default": "DEFAULT",
     "custom": "CUSTOM",
-    "save": "Save",
+    "save": "Save & Close",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "loading": "Loading...",
     "generating": "Generating...",
     "expanding": "Expanding Idea...",
     "active": "Active",
     "signin": "SIGN IN",
-    "tools": "Tools"
+    "tools": "Tools",
+    "confirmReset": "Are you sure you want to reset the canvas? All current ideas will be lost.",
+    "error": {
+      "title": "Request Failed",
+      "cors": "Request blocked, possibly due to CORS policy or network connection issues.",
+      "rateLimit": "Too many requests (429), please try again later.",
+      "badRequest": "Bad request (400), please check your configuration.",
+      "serverError": "Internal server error (500), please try again later.",
+      "unknown": "An unknown error occurred, please check your network or API config.",
+      "retry": "Retry"
+    }
   },
   "nav": {
     "title": "ThinkFlow AI",
@@ -46,6 +57,7 @@
     "coreIdea": "Core Idea",
     "followUp": "Ask a follow-up...",
     "imgAction": "IMG",
+    "deepDive": "Detail",
     "view": "View",
     "regenerate": "Regenerate",
     "mainTitle": "Root Node",
@@ -53,11 +65,12 @@
   },
   "prompts": {
     "system": "You are a mind-mapping assistant that helps users expand their ideas layer by layer into a thinking tree.\n\nWorkflow:\n1. User provides an initial idea (or selects an existing node).\n2. Understand user intent based on the [Thinking Context Path] (trace from root to current node).\n3. Generate 3-5 deeper or related sub-ideas.\n4. Each sub-idea includes a short name and a minimal description.\n\nResponse format must be strict JSON:\n{'{'}\n  \"nodes\": [\n    {'{'} \"text\": \"Sub-idea 1 Name\", \"description\": \"One-sentence description\" {'}'},\n    {'{'} \"text\": \"Sub-idea 2 Name\", \"description\": \"One-sentence description\" {'}'}\n  ]\n{'}'}\n\nNote: Return ONLY JSON, no explanation.",
-    "image": "Generate an illustration style image representing the theme: {prompt}. Requirements: Simple composition, bright colors, suitable as a visual aid for a mind map. NO Chinese characters or text in the image.",
+    "image": "A beautiful book art illustration, theme: {prompt}. Style: Exquisite picture book aesthetic, warm tones, soft lighting, elegant and poetic composition that tells a story. Details: High-quality brushwork, minimalist yet decorative, suitable as a visual centerpiece for a mind map. STRICT REQUIREMENT: No text, letters, or characters in the image.",
     "continue": "Please continue exploring",
     "coreIdeaPrefix": "Core Idea",
     "contextPath": "Thinking Context Path",
     "selectedNode": "Current Selected Node",
-    "newRequirement": "User Follow-up/New Requirement"
+    "newRequirement": "User Follow-up/New Requirement",
+    "deepDivePrompt": "Please provide a deep and detailed analysis of 【{topic}】. Requirements:\n1. Clear structure, including background, core principles, key elements, and practical applications.\n2. Professional yet easy-to-understand language.\n3. Total length around 300-500 words.\n4. Output the body text directly, do not use JSON format, and do not include any opening or closing remarks."
   }
 }
