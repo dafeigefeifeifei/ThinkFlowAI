@@ -232,24 +232,39 @@ body {
     @apply !bg-white !border-slate-200 !shadow-xl !rounded-lg !left-4 md:!left-6 !bottom-28 md:!bottom-6 !transition-all;
 }
 
+@media (max-width: 767px) {
+    .vue-flow__controls {
+        margin-left: 0 !important;
+        left: 1rem !important;
+    }
+}
+
 .vue-flow__controls-button {
     @apply !border-slate-100 !fill-slate-400 hover:!bg-slate-50 !transition-colors;
 }
 
 .vue-flow__minimap {
     @apply !bg-white/80 !backdrop-blur-md !border-slate-200 !shadow-2xl !rounded-xl !overflow-hidden !transition-all;
-    margin: 1.5rem !important;
-    bottom: 80px !important;
-    right: 0 !important;
-    width: 180px !important;
-    height: 120px !important;
+    bottom: 130px !important;
+    right: 1rem !important;
+    width: 140px !important;
+    height: 100px !important;
+    margin: 0 !important;
+}
+
+.vue-flow__minimap svg {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
 }
 
 @media (min-width: 768px) {
     .vue-flow__minimap {
-        bottom: 0 !important;
+        bottom: 1.5rem !important;
+        right: 1.5rem !important;
         width: 220px !important;
         height: 160px !important;
+        margin: 0 !important;
     }
 }
 
