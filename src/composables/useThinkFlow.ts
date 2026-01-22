@@ -7,6 +7,7 @@
 import { computed, nextTick, onMounted, reactive, ref, toRaw, watch, type Ref } from 'vue'
 import { MarkerType, Position, useVueFlow } from '@vue-flow/core'
 import { BackgroundVariant } from '@vue-flow/background'
+import { DEFAULT_CONFIG, API_KEY } from '../services/config'
 
 /**
  * i18n 翻译函数类型（等价于 vue-i18n 的 t）
@@ -19,12 +20,6 @@ type Translate = (key: string, params?: any) => string
  * @param locale 当前语言（用于持久化语言选择）
  */
 export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> }) {
-    /**
-     * 默认模式下的 API Key（当前不使用环境变量注入）。
-     * - 如需鉴权，请通过 Settings 的 Custom 模式填写 apiKey
-     */
-    const API_KEY = ''
-
     /**
      * API 配置（支持默认/自定义两种模式）
      * - 自定义模式写入 localStorage，刷新后仍保留
@@ -42,23 +37,6 @@ export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> 
             apiKey: localStorage.getItem('image_apiKey') || ''
         }
     })
-
-    /**
-     * 默认接口配置（当用户选择默认模式时使用）
-     * - apiKey 允许为空：会回退到 API_KEY（环境变量）
-     */
-    const DEFAULT_CONFIG = {
-        chat: {
-            baseUrl: 'https://thinkflow.lz-t.top/chat/completions',
-            model: 'glm-4-flash',
-            apiKey: ''
-        },
-        image: {
-            baseUrl: 'https://thinkflow.lz-t.top/images/generations',
-            model: 'cogview-3-flash',
-            apiKey: ''
-        }
-    }
 
     /**
      * 语言选择持久化（与 i18n/index.ts 中的初始化配合）

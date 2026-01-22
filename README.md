@@ -66,10 +66,9 @@
 src/
 ├── components/             # UI 组件层
 │   ├── WindowNode.vue      # 核心逻辑载体：自定义节点，集成生图/回答/追问能力
-│   ├── TopNav.vue          # 全局控制：布局算法触发、导出、总结、全屏等
-│   ├── SideNav.vue         # 视图配置：小地图、连线样式、背景切换、设置入口
-│   ├── BottomBar.vue       # 想法入口：灵感触发点
-│   └── ...Modals           # 弹窗逻辑：设置、预览、重置确认等
+│   └── ...
+├── services/               # 基础服务层
+│   └── config.ts           # 核心配置：API 默认地址、模型名称与全局 API Key
 ├── composables/            # 领域逻辑层
 │   └── useThinkFlow.ts     # 业务心脏：响应式状态管理、API 调度、排版算法实现
 ├── i18n/                   # 语言资产
@@ -80,7 +79,71 @@ src/
 
 ---
 
-## ⚙️ API 服务说明 (重要)
+## ⚙️ 部署配置说明 (私有化部署必读)
+
+如果您希望私有化部署本项目（例如部署给公司内部或朋友使用），**强烈建议**您修改默认的后端服务配置，以免使用公共演示接口导致额度受限。
+
+### 1. 修改默认配置
+
+打开 `src/services/config.ts` 文件，修改 `DEFAULT_CONFIG` 常量：
+
+```typescript
+// src/services/config.ts
+
+/**
+ * 默认接口配置
+ * 修改此处以指向您的私有 API 服务
+ */
+export const DEFAULT_CONFIG = {
+    chat: {
+        // 您的 Chat 接口地址 (OpenAI 兼容格式)
+        // 如果遇到跨域问题，可以配合 vite.config.ts 的 proxy 使用，例如填写 '/api/chat'
+        baseUrl: 'https://your-private-api.com/v1/chat/completions',
+        // 默认使用的模型名称
+        model: '',
+        // (可选) 如果您的接口需要鉴权，可在此处填写 Key，或者留空让用户在前端设置中填写
+        apiKey: ''
+    },
+    image: {
+        // 您的生图接口地址
+        baseUrl: 'https://your-private-api.com/v1/images/generations',
+        model: '',
+        apiKey: ''
+    }
+}
+```
+
+### 2. 解决跨域问题 (CORS)
+
+如果您请求的 API 不支持跨域，可以在 `vite.config.ts` 中配置代理：
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+    // ... 其他配置
+    server: {
+        proxy: {
+            '/api': {
+                target: 'https://your-private-api.com/v1',
+                changeOrigin: true,
+                rewrite: path => path.replace(/^\/api/, '')
+            }
+        }
+    }
+})
+```
+
+配置代理后，将 `config.ts` 中的 `baseUrl` 修改为相对路径（如 `/api/chat/completions`）即可。
+
+### 3. 构建项目
+
+```bash
+npm run build
+```
+
+---
+
+## ⚙️ API 服务说明 (公共演示)
 
 为了让用户能够开箱即用，本项目提供了一套默认的演示接口。
 

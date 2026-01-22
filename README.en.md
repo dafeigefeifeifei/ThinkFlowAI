@@ -66,10 +66,9 @@ Traditional mind mapping tools often require manual entry of every branch, which
 src/
 ├── components/             # UI Component Layer
 │   ├── WindowNode.vue      # Logic Carrier: Custom node with Image/Answer/Follow-up capabilities
-│   ├── TopNav.vue          # Global Controls: Layout triggers, export, summary, fullscreen, etc.
-│   ├── SideNav.vue         # View Config: MiniMap, edge styles, background, settings entry
-│   ├── BottomBar.vue       # Idea Entry: The spark of inspiration
-│   └── ...Modals           # Modal Logic: Settings, Preview, Reset confirmation, etc.
+│   └── ...
+├── services/               # Base Service Layer
+│   └── config.ts           # Core Config: API endpoints, model names, and global API Key
 ├── composables/            # Domain Logic Layer
 │   └── useThinkFlow.ts     # Business Heart: State management, API scheduling, layout algorithm
 ├── i18n/                   # Language Assets
@@ -80,7 +79,72 @@ src/
 
 ---
 
-## ⚙️ API Service Description (Important)
+## ⚙️ Deployment Configuration (Self-Hosting Guide)
+
+If you wish to self-host this project (e.g., for internal use or sharing with friends), we **strongly recommend** modifying the default backend service configuration to avoid rate limits on the public demo endpoints.
+
+### 1. Modifying Default Config
+
+Open `src/services/config.ts` and modify the `DEFAULT_CONFIG` constant:
+
+```typescript
+// src/services/config.ts
+
+/**
+ * Default API Configuration
+ * Modify this to point to your private API services
+ */
+export const DEFAULT_CONFIG = {
+    chat: {
+        // Your Chat API endpoint (OpenAI compatible)
+        // If you encounter CORS issues, use it with vite.config.ts proxy (e.g., '/api/chat')
+        baseUrl: 'https://your-private-api.com/v1/chat/completions',
+        // Default model name
+        model: 'gpt-4o',
+        // (Optional) If your API requires authentication, enter the key here,
+        // or leave it empty for users to enter in the frontend settings
+        apiKey: ''
+    },
+    image: {
+        // Your Image Generation endpoint
+        baseUrl: 'https://your-private-api.com/v1/images/generations',
+        model: 'dall-e-3',
+        apiKey: ''
+    }
+}
+```
+
+### 2. Handling CORS Issues
+
+If your API does not support CORS, you can configure a proxy in `vite.config.ts`:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+    // ... other configs
+    server: {
+        proxy: {
+            '/api': {
+                target: 'https://your-private-api.com/v1',
+                changeOrigin: true,
+                rewrite: path => path.replace(/^\/api/, '')
+            }
+        }
+    }
+})
+```
+
+After configuring the proxy, update `baseUrl` in `config.ts` to a relative path (e.g., `/api/chat/completions`).
+
+### 3. Build Project
+
+```bash
+npm run build
+```
+
+---
+
+## ⚙️ API Service Description (Public Demo)
 
 To provide an out-of-the-box experience, this project includes a default set of demo endpoints.
 
