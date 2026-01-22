@@ -4,7 +4,7 @@
  * - 对外提供：页面与组件可直接调用的状态与动作（expand / deepDive / image / summary 等）
  */
 
-import { computed, reactive, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, toRaw, watch, type Ref } from 'vue'
 import { MarkerType, Position, useVueFlow } from '@vue-flow/core'
 import { BackgroundVariant } from '@vue-flow/background'
 
@@ -380,20 +380,97 @@ export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> 
         return { nodeIds, edgeIds }
     })
 
-    const config = reactive({
-        edgeColor: '#fed7aa',
-        edgeType: 'default',
-        backgroundVariant: BackgroundVariant.Lines,
-        showControls: true,
-        showMiniMap: true,
-        hierarchicalDragging: true,
-        snapToGrid: true,
-        snapGrid: [16, 16] as [number, number],
-        snapToAlignment: true,
-        showAlignmentGuides: true
-    })
+    const savedConfig = localStorage.getItem('thinkflow_config')
+    const config = reactive(
+        savedConfig
+            ? JSON.parse(savedConfig)
+            : {
+                  edgeColor: '#fed7aa',
+                  edgeType: 'default',
+                  backgroundVariant: BackgroundVariant.Lines,
+                  showControls: true,
+                  showMiniMap: true,
+                  hierarchicalDragging: true,
+                  snapToGrid: true,
+                  snapGrid: [16, 16] as [number, number],
+                  snapToAlignment: true,
+                  showAlignmentGuides: true
+              }
+    )
 
     const collapsedNodeIds = ref<string[]>([])
+    const isInitialLoad = ref(true)
+
+    /**
+     * 画布状态持久化 (Nodes, Edges, Collapsed)
+     */
+    watch(
+        [() => flowNodes.value, () => flowEdges.value, () => collapsedNodeIds.value],
+        () => {
+            if (isInitialLoad.value) return
+
+            // 使用 toRaw 确保保存的是纯 JS 对象，避免响应式代理带来的序列化问题
+            localStorage.setItem('thinkflow_nodes', JSON.stringify(toRaw(flowNodes.value)))
+            localStorage.setItem('thinkflow_edges', JSON.stringify(toRaw(flowEdges.value)))
+            localStorage.setItem('thinkflow_collapsed', JSON.stringify(toRaw(collapsedNodeIds.value)))
+        },
+        { deep: true }
+    )
+
+    /**
+     * UI 配置持久化
+     */
+    watch(
+        () => config,
+        newConfig => {
+            if (isInitialLoad.value) return
+            localStorage.setItem('thinkflow_config', JSON.stringify(toRaw(newConfig)))
+        },
+        { deep: true }
+    )
+
+    /**
+     * 初始化时从本地存储恢复状态
+     */
+    onMounted(async () => {
+        const savedNodes = localStorage.getItem('thinkflow_nodes')
+        const savedEdges = localStorage.getItem('thinkflow_edges')
+        const savedCollapsed = localStorage.getItem('thinkflow_collapsed')
+
+        if (savedNodes && savedEdges) {
+            try {
+                const nodes = JSON.parse(savedNodes)
+                const edges = JSON.parse(savedEdges)
+                const collapsed = savedCollapsed ? JSON.parse(savedCollapsed) : []
+
+                if (nodes.length > 0) {
+                    // 必须先清空当前可能存在的默认节点（如果有）
+                    setNodes([])
+                    setEdges([])
+
+                    await nextTick()
+
+                    // 恢复节点和边
+                    setNodes(nodes)
+                    setEdges(edges)
+                    collapsedNodeIds.value = collapsed
+
+                    // 恢复后自适应一次视图
+                    setTimeout(() => {
+                        fitView({ padding: 0.2, duration: 800 })
+                    }, 150)
+                }
+            } catch (e) {
+                console.error('Failed to restore ThinkFlow state:', e)
+            }
+        }
+
+        // 确保在所有初始化操作（包括可能的 setNodes）完成后再开启保存
+        await nextTick()
+        setTimeout(() => {
+            isInitialLoad.value = false
+        }, 300)
+    })
 
     const isSubtreeCollapsed = (nodeId: string) => collapsedNodeIds.value.includes(nodeId)
 
@@ -1027,6 +1104,13 @@ export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> 
         ideaInput.value = ''
         setNodes([])
         setEdges([])
+        collapsedNodeIds.value = []
+
+        // 清除本地存储
+        localStorage.removeItem('thinkflow_nodes')
+        localStorage.removeItem('thinkflow_edges')
+        localStorage.removeItem('thinkflow_collapsed')
+
         showResetConfirm.value = false
     }
 
