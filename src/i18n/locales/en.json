@@ -1,6 +1,6 @@
 {
   "common": {
-    "settings": "API Settings",
+    "settings": "Settings",
     "default": "DEFAULT",
     "custom": "CUSTOM",
     "save": "Save & Close",
@@ -28,7 +28,7 @@
     }
   },
   "chat": {
-    "title": "Chat with Graph",
+    "title": "Chat",
     "placeholder": "Ask about the current graph...",
     "send": "Send",
     "clear": "Clear Chat",
