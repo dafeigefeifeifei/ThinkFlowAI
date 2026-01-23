@@ -808,11 +808,37 @@ export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> 
         isSummarizing.value = true
         summaryContent.value = ''
 
-        const nodesInfo = flowNodes.value.map(n => ({
-            label: n.data.label,
-            description: n.data.description,
-            type: n.data.type
-        }))
+        // 构建层级结构的文本表示，帮助 AI 更好地理解逻辑关系
+        const buildHierarchyText = () => {
+            const rootNode = flowNodes.value.find(n => n.data.type === 'root')
+            if (!rootNode) return ''
+
+            let text = `核心主题: ${rootNode.data.label}\n`
+            if (rootNode.data.description) text += `核心描述: ${rootNode.data.description}\n`
+            text += `\n思维脉络:\n`
+
+            const traverse = (parentId: string, level: number) => {
+                const children = flowEdges.value
+                    .filter(e => e.source === parentId)
+                    .map(e => flowNodes.value.find(n => n.id === e.target))
+                    .filter(n => !!n)
+
+                children.forEach(child => {
+                    const indent = '  '.repeat(level)
+                    text += `${indent}- ${child!.data.label}`
+                    if (child!.data.description) {
+                        text += `: ${child!.data.description}`
+                    }
+                    text += '\n'
+                    traverse(child!.id, level + 1)
+                })
+            }
+
+            traverse(rootNode.id, 1)
+            return text
+        }
+
+        const nodesHierarchy = buildHierarchyText()
 
         const useConfig = apiConfig.mode === 'default' ? DEFAULT_CONFIG.chat : apiConfig.chat
         const finalApiKey = apiConfig.mode === 'default' ? useConfig.apiKey || API_KEY : useConfig.apiKey
@@ -830,7 +856,7 @@ export function useThinkFlow({ t, locale }: { t: Translate; locale: Ref<string> 
                         {
                             role: 'user',
                             content: t('prompts.summaryPrompt', {
-                                nodes: JSON.stringify(nodesInfo, null, 2)
+                                nodes: nodesHierarchy
                             })
                         }
                     ]
