@@ -42,6 +42,7 @@ This is more than just a tool; it is a local-first thinking space that grows wit
 
 - **Zero-Pressure Cold Start**: Enter a core concept, and the AI automatically builds the initial logical skeleton, ending "blank page anxiety."
 - **Full-Chain Context Awareness**: The AI understands the complete logical path from the root node to the current node. This means every "follow-up" is based on deep context rather than isolated keywords.
+- **Multi-style AI Generation**: Switch between "Creative" and "Precise" modes to control the breadth and depth of AI expansions.
 - **Dynamic Tree Layout**: Built-in adaptive layout algorithm automatically handles collisions and overlaps when nodes expand, ensuring the graph remains clear and organized.
 
 ### 🔍 Deep Content Exploration (Deep Dive & Insights)
@@ -52,6 +53,8 @@ This is more than just a tool; it is a local-first thinking space that grows wit
 
 ### 🛠️ Premium Interaction Experience
 
+- **Immersive Presentation Mode**: One-click full-screen presentation with keyboard navigation (Arrow keys) to guide your audience through the map.
+- **Global Search & Focus**: Real-time search for nodes by label or description with automatic viewport focusing.
 - **Linked Dragging System**: Parent and child nodes move together, maintaining the relative stability of logical clusters.
 - **Subtree State Management**: Supports subtree collapsing for large-scale graphs, allowing you to switch freely between macro vision and micro details.
 - **Local-First Architecture**: All configurations and data are stored in the browser's IndexedDB/LocalStorage. Supports any OpenAI-compatible interface with no platform lock-in.
